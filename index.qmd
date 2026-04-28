@@ -1,0 +1,781 @@
+---
+title: "The WoN and What Factors do They Depend On"
+subtitle: "How consumption, corruption, internet ussage, life expectancy economic growth, tourism and unemployment impact on the wealth"
+author:
+    - name: "S. Mazepa, T. Muraviov, Y. Yarova, Y. Kyrychuk"
+      email: [tmuraviov@kse.org.ua]
+      affiliations: ["Kyiv School of Economics"]
+format:
+  html:
+    code-fold: true
+    code-summary: "Show code"
+    toc: true
+    toc-depth: 3
+    theme: cosmo
+    fig-width: 9
+    fig-height: 5.6
+date: 28/04/2026
+execute:
+  echo: true
+  warning: false
+  message: false
+---
+
+Our files are available on github: [repo](https://github.com/tymof1j/descriptive-stats-project), as well as the github-pages link to view the rendered html: (link)[]
+
+## Our Data
+
+The report follows the same order as our `pdf` presentation file: data sources first, then wealth, corruption, health and development, economic growth, tourism, labour markets, purchasing power, and synthesis.
+
+The first group of files shown in the screenshot (`corruption.csv`, `cost_of_living.csv`, `richest_countries.csv`, `tourism.csv`, and `unemployment.csv`) comes from [World Economic Data](https://www.kaggle.com/datasets/madhurpant/world-economic-data?select=corruption.csv). The other two files (`Economic Indicators And Inflation.csv` and `WorldBank.xlsx`) come from [Global Economic & Human Development Data](https://www.kaggle.com/datasets/adilshamim8/economic-indicators-and-inflation).
+
+The libraries that were used are `tidyverse`, `ggplot2`, `ggrepel` (clean plot labels), `scales` (axis and dollar formatting), `readxl`, and `knitr` (better looking tables).
+
+```{r}
+#| label: setup
+#| message: false
+#| warning: false
+#| code-fold: true
+#| code-summary: Show setup
+rm(list = ls())
+
+libs <- c("tidyverse", "ggplot2", "ggrepel", "scales", "readxl")
+invisible(lapply(libs, require, character.only = TRUE))
+
+palette <- c("#003964", "#00bbce", "#A7C539", "#D33E2C",
+             "#F15B43", "#E4E541", "#00665a", "#D9D9D9", "#000000")
+
+region_colors <- c(
+  "East Asia & Pacific"        = palette[1],
+  "Europe & Central Asia"      = palette[2],
+  "Latin America & Caribbean"  = palette[3],
+  "Middle East & North Africa" = palette[4],
+  "North America"              = palette[5],
+  "South Asia"                 = palette[7],
+  "Sub-Saharan Africa"         = palette[9]
+)
+
+theme_kse <- theme_minimal() +
+  theme(
+    panel.grid            = element_blank(),
+    plot.background       = element_rect(fill = "white", color = "white"),
+    axis.line             = element_blank(),
+    text                  = element_text(color = palette[1], size = 13, face = "bold"),
+    axis.title.x          = element_text(margin = margin(t = 10)),
+    axis.title.y          = element_text(margin = margin(r = 10)),
+    axis.text.x           = element_text(angle = 0, vjust = 0.5, color = palette[1],
+                                         margin = margin(t = 10)),
+    axis.text.y           = element_text(color = palette[1], margin = margin(r = 10)),
+    panel.grid.major.y    = element_line(color = palette[2], linewidth = 0.25),
+    legend.title          = element_blank(),
+    plot.title.position   = "plot",
+    plot.caption.position = "plot",
+    plot.title   = element_text(margin = margin(t = 5, r = 5, b = 10, l = 5), size = 14),
+    plot.caption = element_text(hjust = 0, face = "italic",
+                                margin = margin(t = 5, r = 5, b = 3, l = 5)),
+    axis.ticks.x = element_line(color = palette[1], linewidth = 1)
+  )
+```
+
+### Data Clean
+
+- Removed missing rows and extra spaces in text columns.
+- Grouped countries by region and development level.
+- Merged all country-level files into one `world` dataset.
+- Created income tiers, purchasing-power ratios, cost quadrants, and unemployment ranks.
+
+```{r}
+#| label: data-prep
+#| message: false
+#| warning: false
+#| code-fold: true
+#| code-summary: Show data prep
+classify_country <- function(df) {
+  df %>% mutate(
+    region = case_when(
+      country %in% c(
+        "France","Germany","Austria","Belgium","Netherlands","Luxembourg",
+        "Switzerland","Ireland","United Kingdom","Norway","Sweden","Denmark",
+        "Finland","Iceland","Portugal","Spain","Italy","Greece","Malta",
+        "Estonia","Latvia","Lithuania","Slovenia","Slovakia","Czechia","Croatia",
+        "Poland","Hungary","Romania","Bulgaria","Cyprus","Guernsey","Isle of Man",
+        "Gibraltar","Principality of Monaco"
+      ) ~ "Western Europe",
+
+      country %in% c(
+        "Ukraine","Russia","Belarus","Serbia","Albania","Kosovo","Montenegro",
+        "Moldova","Armenia","Georgia","Azerbaijan","Kazakhstan","Kyrgyzstan",
+        "Tajikistan","Uzbekistan","Turkmenistan"
+      ) ~ "Eastern Europe",
+
+      country %in% c(
+        "Turkey","United Arab Emirates","Qatar","Saudi Arabia","Israel","Egypt",
+        "Iran","Iraq","Lebanon","Syria","Libya","Algeria","Tunisia","Morocco",
+        "Bahrain","Oman","Yemen","Djibouti","Jordan"
+      ) ~ "Middle East & N. Africa",
+
+      country %in% c(
+        "South Africa","Nigeria","Ethiopia","Kenya","Ghana","Ivory Coast",
+        "Cameroon","Uganda","Tanzania","Zimbabwe","Mozambique","Angola","Sudan",
+        "Chad","Niger","Mali","Zambia","Botswana","Namibia","Rwanda","Eswatini",
+        "Benin","Togo","Burundi","Sierra Leone","Liberia","Guinea","Madagascar",
+        "Central Africa","Congo","Congo (Dem. Republic)","Eritrea","Comoros",
+        "Cape Verde","Lesotho","Gabon","Equatorial Guinea","Mauritania","Somalia",
+        "South Sudan","Papua New Guinea","Cocos (Keeling) Islands"
+      ) ~ "Sub-Saharan Africa",
+
+      country %in% c(
+        "Japan","South Korea","Australia","New Zealand","China","India",
+        "Indonesia","Malaysia","Philippines","Vietnam","Thailand","Cambodia",
+        "Laos","Burma","Bangladesh","Sri Lanka","Pakistan","Nepal","Bhutan",
+        "Singapore","Hong Kong","Macao","Taiwan","Mongolia","Timor-Leste"
+      ) ~ "Asia-Pacific",
+
+      country %in% c(
+        "United States","Canada","Mexico","Brazil","Argentina","Colombia",
+        "Chile","Ecuador","Peru","Bolivia","Paraguay","Uruguay","Venezuela",
+        "Dominican Republic","Honduras","Guatemala","El Salvador","Nicaragua",
+        "Costa Rica","Panama","Cuba","Puerto Rico","Bermuda","Bahamas",
+        "Barbados","Cayman Islands","Turks and Caicos Islands","Virgin Islands",
+        "American Samoa","Haiti","Suriname"
+      ) ~ "Americas",
+
+      country %in% c(
+        "Marshall Islands","Kiribati","Tonga","Samoa","Fiji",
+        "Vanuatu","Solomon Islands"
+      ) ~ "Pacific Islands",
+
+      TRUE ~ "Other"
+    ),
+
+    dev_level = case_when(
+      country %in% c(
+        "France","Germany","Austria","Belgium","Netherlands","Luxembourg",
+        "Switzerland","Ireland","United Kingdom","Norway","Sweden","Denmark",
+        "Finland","Iceland","Portugal","Spain","Italy","Greece","Malta",
+        "Estonia","Latvia","Lithuania","Slovenia","Slovakia","Czechia","Croatia",
+        "Cyprus","Guernsey","Isle of Man","Gibraltar","Principality of Monaco",
+        "United States","Canada","Australia","New Zealand",
+        "Japan","South Korea","Singapore","Hong Kong","Macao","Taiwan",
+        "Qatar","United Arab Emirates","Bahrain","Saudi Arabia",
+        "Israel","Bermuda","Cayman Islands","Virgin Islands","Puerto Rico"
+      ) ~ "Advanced",
+
+      country %in% c(
+        "China","India","Brazil","Russia","Turkey","Mexico","Indonesia",
+        "Malaysia","Thailand","South Africa","Argentina","Colombia","Chile",
+        "Poland","Hungary","Romania","Bulgaria","Ukraine","Egypt","Morocco",
+        "Vietnam","Philippines","Pakistan","Bangladesh","Kazakhstan",
+        "Azerbaijan","Georgia","Armenia","Ecuador","Dominican Republic",
+        "Serbia","Albania","Kosovo","Montenegro","Moldova","Bolivia","Paraguay",
+        "Guatemala","Honduras","El Salvador","Nicaragua","Tunisia","Algeria",
+        "Libya","Iraq","Iran","Lebanon","Nigeria","Ghana","Ivory Coast",
+        "Cameroon","Kenya","Angola","Sudan","Zimbabwe","Uganda","Tanzania",
+        "Mozambique","Zambia","Ethiopia","Gabon","Equatorial Guinea","Kyrgyzstan",
+        "Tajikistan","Uzbekistan","Turkmenistan","Laos","Cambodia","Sri Lanka",
+        "Nepal","Burma","Bhutan","Timor-Leste","Mongolia","Namibia",
+        "Botswana","Venezuela","Peru","Uruguay","Panama","Costa Rica","Cuba",
+        "Suriname","Oman","Jordan","Syria","Yemen","Djibouti","Eswatini",
+        "Papua New Guinea","Rwanda","Benin","Togo","Senegal","Mali","Mauritania"
+      ) ~ "Emerging",
+
+      TRUE ~ "Developing"
+    )
+  )
+}
+
+clean <- function(df) {
+  df %>% drop_na() %>% mutate(across(where(is.character), trimws))
+}
+
+corruption   <- clean(read.csv("data/corruption.csv"))
+cost_living  <- clean(read.csv("data/cost_of_living.csv"))
+richest      <- clean(read.csv("data/richest_countries.csv"))
+tourism      <- clean(read.csv("data/tourism.csv"))
+unemployment <- clean(read.csv("data/unemployment.csv"))
+ec           <- read.csv("data/Economic Indicators And Inflation.csv")
+bank         <- read_xlsx("data/WorldBank.xlsx")
+
+world <- corruption %>%
+  full_join(cost_living,  by = "country") %>%
+  full_join(richest,      by = "country") %>%
+  full_join(tourism,      by = "country") %>%
+  full_join(unemployment, by = "country") %>%
+  classify_country() %>%
+  mutate(
+    income_tier = case_when(
+      annual_income >= 50000 ~ "High Income (>= $50k)",
+      annual_income >= 15000 ~ "Upper-Middle ($15k-50k)",
+      annual_income >= 5000  ~ "Lower-Middle ($5k-15k)",
+      !is.na(annual_income)  ~ "Low Income (< $5k)"
+    ),
+    income_tier = factor(income_tier, levels = c(
+      "High Income (>= $50k)", "Upper-Middle ($15k-50k)",
+      "Lower-Middle ($5k-15k)", "Low Income (< $5k)"
+    )),
+    value_ratio = purchasing_power_index / cost_index,
+    col_quadrant = case_when(
+      cost_index >= 100 & purchasing_power_index >= 70 ~ "Expensive & High Power",
+      cost_index >= 100 & purchasing_power_index < 70  ~ "Expensive & Low Power",
+      cost_index <  100 & purchasing_power_index >= 50 ~ "Affordable & High Power",
+      !is.na(cost_index)                               ~ "Affordable & Low Power"
+    ),
+    unemp_rank = rank(desc(unemployment_rate), na.last = "keep"),
+    unemp_z    = round(
+      (unemployment_rate - mean(unemployment_rate, na.rm = TRUE)) /
+        sd(unemployment_rate, na.rm = TRUE), 2)
+  )
+
+w_corruption   <- world %>% filter(!is.na(annual_income))
+w_cost         <- world %>% filter(!is.na(cost_index))
+w_richest      <- world %>% filter(!is.na(gdp_per_capita))
+w_tourism      <- world %>% filter(!is.na(tourists_in_millions))
+w_unemployment <- world %>% filter(!is.na(unemployment_rate))
+
+bank_main <- bank %>%
+  select(`Country Name`, Region, IncomeGroup) %>%
+  distinct()
+
+ec_region <- ec %>%
+  left_join(bank_main, by = c("Country" = "Country Name"))
+```
+
+```{r}
+#| label: data-sources-table
+#| message: false
+#| warning: false
+#| code-fold: true
+#| code-summary: Show data sources table
+tibble(
+  dataset = c("Corruption Index", "Cost of Living + Purchasing Power",
+              "Richest Countries", "Tourism Revenue", "Unemployment",
+              "World Bank Economic Indicators", "Economic Growth"),
+  observations = c(nrow(corruption), nrow(cost_living), nrow(richest),
+                   nrow(tourism), nrow(unemployment), nrow(bank), nrow(ec)),
+  unit = c("countries", "countries", "countries", "countries", "countries",
+           "country-years", "country-years")
+) %>%
+  knitr::kable()
+```
+
+The merged cross-sectional dataset contains `r nrow(world)` countries and `r ncol(world)` columns. The World Bank file adds a long-run country-year panel from `r min(bank$Year, na.rm = TRUE)` to `r max(bank$Year, na.rm = TRUE)`.
+
+## Finding 01 - Wealth
+
+Small, specialized economies dominate GDP per capita rankings.
+
+```{r}
+#| label: wealth-top-countries-table
+#| message: false
+#| warning: false
+#| code-fold: true
+#| code-summary: Show wealth table
+w_richest %>%
+  slice_max(gdp_per_capita, n = 10) %>%
+  transmute(
+    country,
+    `GDP per capita` = dollar(gdp_per_capita, prefix = "$", big.mark = ",")
+  ) %>%
+  knitr::kable()
+```
+
+```{r}
+#| label: wealth-gdp-per-capita-plot
+#| message: false
+#| warning: false
+#| code-fold: true
+#| code-summary: Show wealth plot
+fig2 <- w_richest %>%
+  slice_max(gdp_per_capita, n = 15) %>%
+  mutate(country = fct_reorder(country, gdp_per_capita),
+         is_top5 = gdp_per_capita >= sort(gdp_per_capita, decreasing = TRUE)[5]) %>%
+  ggplot(aes(x = gdp_per_capita, y = country, fill = is_top5)) +
+  geom_col(width = 0.7) +
+  geom_text(aes(label = dollar(gdp_per_capita, prefix = "$", big.mark = ",")),
+            hjust = -0.1, size = 3.2, color = palette[1], fontface = "bold") +
+  scale_fill_manual(values = c(`FALSE` = palette[2], `TRUE` = palette[1]), guide = "none") +
+  scale_x_continuous(labels = dollar_format(prefix = "$")) +
+  expand_limits(x = max(w_richest$gdp_per_capita, na.rm = TRUE) * 1.18) +
+  labs(title = "Figure 1: Top 15 Countries by GDP per Capita",
+       x = "GDP per Capita (USD)", y = NULL) +
+  theme_kse +
+  theme(panel.grid.major.y = element_blank(),
+        panel.grid.major.x = element_line(color = palette[2], linewidth = 0.25))
+
+fig2
+```
+
+## Finding 02 - Corruption and Income
+
+The correlation is very strong: as income rises, corruption falls.
+
+```{r}
+#| label: corruption-income-summary
+#| message: false
+#| warning: false
+#| code-fold: true
+#| code-summary: Show corruption summary
+r <- cor(w_corruption$annual_income, w_corruption$corruption_index)
+r
+
+w_corruption %>%
+  group_by(income_tier) %>%
+  summarise(avg_income     = round(mean(annual_income), -2),
+            avg_corruption = round(mean(corruption_index), 1),
+            n              = n(),
+            .groups        = "drop") %>%
+  knitr::kable()
+```
+
+```{r}
+#| label: corruption-income-plot
+#| message: false
+#| warning: false
+#| code-fold: true
+#| code-summary: Show corruption plot
+label_c1 <- c("Denmark","Switzerland","Somalia","South Sudan","Venezuela",
+              "United States","China","Ukraine","Norway","Singapore","India")
+
+fig1 <- w_corruption %>%
+  mutate(label = if_else(country %in% label_c1, country, "")) %>%
+  ggplot(aes(x = annual_income, y = corruption_index, color = income_tier)) +
+  geom_point(size = 2.5, alpha = 0.85) +
+  geom_smooth(method = "lm", se = FALSE, color = palette[4],
+              linewidth = 0.8, linetype = "dashed") +
+  geom_text_repel(aes(label = label), size = 3, fontface = "plain",
+                  color = palette[1], max.overlaps = 15, seed = 42) +
+  scale_x_continuous(labels = dollar_format(prefix = "$")) +
+  scale_color_manual(values = setNames(palette[1:4],
+    c("High Income (>= $50k)", "Upper-Middle ($15k-50k)",
+      "Lower-Middle ($5k-15k)", "Low Income (< $5k)"))) +
+  labs(title = "Figure 2: Income per Capita and Corruption",
+       x = "Annual Income per Capita (USD)", y = "Corruption Index") +
+  theme_kse +
+  theme(legend.position = "bottom",
+        panel.grid.major.x = element_line(color = palette[8], linewidth = 0.15))
+
+fig1
+```
+
+### Outliers
+
+Venezuela, Libya, Estonia, and New Zealand are the outliers. In their cases institutions diverge from the income trend.
+
+```{r}
+#| label: corruption-outliers
+#| message: false
+#| warning: false
+#| code-fold: true
+#| code-summary: Show corruption outliers
+trend_model <- lm(corruption_index ~ annual_income, data = w_corruption)
+
+corruption_resid <- w_corruption %>%
+  mutate(predicted = round(predict(trend_model), 1),
+         residual  = round(corruption_index - predicted, 1))
+
+bind_rows(
+  corruption_resid %>%
+    filter(residual > 0) %>%
+    arrange(desc(residual)) %>%
+    mutate(direction = "More corrupt than expected") %>%
+    head(4),
+  corruption_resid %>%
+    filter(residual < 0) %>%
+    arrange(residual) %>%
+    mutate(direction = "Less corrupt than expected") %>%
+    head(4)
+) %>%
+  select(direction, country, annual_income, corruption_index, predicted, residual) %>%
+  knitr::kable()
+```
+
+## Finding 03 - Health and Development
+
+This part uses World Bank data, with internet access, GDP per capita, region, and population density as basic development indicators.
+
+```{r}
+#| label: health-internet-life-expectancy
+#| message: false
+#| warning: false
+#| code-fold: true
+#| code-summary: Show internet plot
+bank %>%
+  ggplot(aes(x = `Individuals using the Internet (% of population)`,
+             y = `Life expectancy at birth (years)`, color = Region)) +
+  geom_point(alpha = 0.5, size = 1.2) +
+  geom_smooth(color = palette[1], se = FALSE, linewidth = 1.5) +
+  labs(title = "Figure 3: Internet Usage vs. Life Expectancy",
+       x = "Internet Usage (% of population)",
+       y = "Life Expectancy",
+       colour = "Region") +
+  scale_color_manual(values = region_colors, na.translate = FALSE) +
+  guides(color = guide_legend(ncol = 1, override.aes = list(size = 3, alpha = 1))) +
+  theme_kse +
+  theme(
+    panel.grid.major = element_line(colour = palette[8], linewidth = 0.25),
+    panel.grid.minor = element_blank(),
+    legend.position = "right",
+    legend.text = element_text(size = 9, face = "plain"),
+    legend.title = element_text(size = 10, face = "bold"),
+    legend.key.height = unit(0.5, "cm"),
+    legend.key.width = unit(0.5, "cm")
+  )
+```
+
+```{r}
+#| label: health-gdp-life-expectancy
+#| message: false
+#| warning: false
+#| code-fold: true
+#| code-summary: Show GDP life plot
+bank %>%
+  filter(Year > 1999) %>%
+  ggplot(aes(x = `Life expectancy at birth (years)`,
+             y = log(`GDP per capita (USD)`),
+             colour = Region,
+             size = `Population density (people per sq. km of land area)`)) +
+  geom_point(alpha = 0.4) +
+  labs(title = "Figure 4: GDP per Capita vs. Life Expectancy",
+       subtitle = "In years 2000-2018",
+       x = "Life Expectancy",
+       y = "Log GDP per capita",
+       colour = "Region",
+       size = "Population density") +
+  scale_color_manual(values = region_colors, na.translate = FALSE) +
+  guides(
+    color = guide_legend(order = 1, ncol = 1,
+                         override.aes = list(size = 3, alpha = 1)),
+    size = guide_legend(order = 2)
+  ) +
+  theme_kse +
+  theme(
+    panel.grid = element_line(colour = palette[8], linewidth = 0.25),
+    panel.grid.minor = element_blank(),
+    legend.position = "right",
+    legend.box = "vertical",
+    legend.text = element_text(size = 9, face = "plain"),
+    legend.title = element_text(size = 10, face = "bold"),
+    legend.key.height = unit(0.5, "cm"),
+    legend.key.width = unit(0.5, "cm")
+  )
+```
+
+```{r}
+#| label: health-gdp-life-correlation
+#| message: false
+#| warning: false
+#| code-fold: true
+#| code-summary: Show health correlation
+bank %>%
+  filter(!is.na(`GDP per capita (USD)`),
+         !is.na(`Life expectancy at birth (years)`)) %>%
+  summarise(
+    correlation = cor(`GDP per capita (USD)`,
+                      `Life expectancy at birth (years)`)
+  ) %>%
+  knitr::kable()
+```
+
+## Finding 04 - Economic Growth
+
+The economic growth file shows the long-run shock-and-rebound pattern which 100% overlaps with the timing of Covid-19.
+
+```{r}
+#| label: growth-global-summary
+#| message: false
+#| warning: false
+#| code-fold: true
+#| code-summary: Show global growth summary
+growth_global <- ec %>%
+  group_by(Year) %>%
+  summarise(Avg_Growth = mean(Economic.Growth...., na.rm = TRUE),
+            .groups = "drop")
+
+growth_global %>%
+  filter(Year %in% c(2020, 2021)) %>%
+  mutate(Avg_Growth = round(Avg_Growth, 2)) %>%
+  knitr::kable()
+```
+
+```{r}
+#| label: growth-global-plot
+#| message: false
+#| warning: false
+#| code-fold: true
+#| code-summary: Show global growth plot
+growth_global %>%
+  ggplot(aes(x = Year, y = Avg_Growth)) +
+  geom_hline(yintercept = 0, color = palette[8], linewidth = 0.4) +
+  geom_vline(xintercept = 2020, color = palette[4], linewidth = 0.8,
+             linetype = "dashed") +
+  annotate("text", x = 2020.25, y = min(growth_global$Avg_Growth, na.rm = TRUE),
+           label = "COVID-19", hjust = 0, vjust = -0.6,
+           color = palette[4], fontface = "bold", size = 3.4) +
+  geom_line(color = palette[7], linewidth = 1.2) +
+  geom_point(color = palette[7], size = 2.5) +
+  labs(title = "Figure 5: Global Average Economic Growth",
+       x = "Year", y = "Economic Growth (%)") +
+  theme_kse +
+  theme(
+    panel.grid = element_line(colour = palette[8], linewidth = 0.25),
+    panel.grid.minor = element_blank()
+  )
+```
+
+### Regional Divergence
+
+```{r}
+#| label: growth-region-table
+#| message: false
+#| warning: false
+#| code-fold: true
+#| code-summary: Show regional growth table
+ec_region %>%
+  filter(!is.na(Region)) %>%
+  group_by(Region) %>%
+  summarise(Avg_Growth = mean(Economic.Growth...., na.rm = TRUE),
+            .groups = "drop") %>%
+  arrange(desc(Avg_Growth)) %>%
+  mutate(Avg_Growth = round(Avg_Growth, 2)) %>%
+  knitr::kable()
+```
+
+```{r}
+#| label: growth-region-plot
+#| message: false
+#| warning: false
+#| code-fold: true
+#| code-summary: Show regional growth plot
+ec_region %>%
+  filter(!is.na(Region)) %>%
+  group_by(Year, Region) %>%
+  summarise(Avg_Growth = mean(Economic.Growth...., na.rm = TRUE),
+            .groups = "drop") %>%
+  ggplot(aes(x = Year, y = Avg_Growth, color = Region)) +
+  geom_line(linewidth = 1) +
+  geom_point(size = 1.5) +
+  labs(title = "Figure 6: Average Economic Growth by Region Over Time",
+       x = "Year",
+       y = "Average Economic Growth (%)",
+       color = "Region") +
+  scale_color_manual(values = region_colors, na.translate = FALSE) +
+  guides(color = guide_legend(ncol = 1, override.aes = list(linewidth = 1.5, size = 2.5))) +
+  theme_kse +
+  theme(
+    panel.grid = element_line(colour = palette[8], linewidth = 0.25),
+    panel.grid.minor = element_blank(),
+    legend.position = "right",
+    legend.text = element_text(size = 9, face = "plain"),
+    legend.title = element_text(size = 10, face = "bold")
+  )
+```
+
+## Finding 05 - Tourism
+
+Countries that get the most toursists not necessarily get the most money out of it.
+
+```{r}
+#| label: tourism-rankings-table
+#| message: false
+#| warning: false
+#| code-fold: true
+#| code-summary: Show tourism table
+top_volume <- w_tourism %>%
+  arrange(desc(tourists_in_millions)) %>%
+  select(country, tourists_in_millions, receipts_per_tourist) %>%
+  head(5) %>%
+  mutate(group = "Most visitors")
+
+top_value <- w_tourism %>%
+  arrange(desc(receipts_per_tourist)) %>%
+  select(country, tourists_in_millions, receipts_per_tourist) %>%
+  head(5) %>%
+  mutate(group = "Highest revenue per tourist")
+
+bind_rows(top_volume, top_value) %>%
+  select(group, country, tourists_in_millions, receipts_per_tourist) %>%
+  knitr::kable()
+```
+
+```{r}
+#| label: tourism-volume-value-plot
+#| message: false
+#| warning: false
+#| code-fold: true
+#| code-summary: Show tourism plot
+label_t <- c("Australia","Qatar","Germany","France","South Korea","Hong Kong",
+             "Moldova","United States","Japan","Macao","United Arab Emirates","Portugal")
+
+fig3 <- w_tourism %>%
+  mutate(label      = if_else(country %in% label_t, country, ""),
+         is_notable = country %in% label_t) %>%
+  ggplot(aes(x = tourists_in_millions, y = receipts_per_tourist)) +
+  geom_point(aes(color = is_notable, size = percentage_of_gdp), alpha = 0.85) +
+  geom_text_repel(aes(label = label), size = 3, color = palette[1],
+                  fontface = "plain", max.overlaps = 20, seed = 42) +
+  scale_color_manual(values = c(`FALSE` = palette[1], `TRUE` = palette[2]), guide = "none") +
+  scale_size_continuous(range = c(2, 9), name = "% of GDP") +
+  scale_x_continuous(breaks = seq(0, 120, 20)) +
+  scale_y_continuous(labels = dollar_format(prefix = "$")) +
+  labs(title = "Figure 7: Tourism Volume vs Spending per Visitor",
+       x = "International Tourists (millions)", y = "Receipts per Tourist (USD)") +
+  theme_kse +
+  theme(panel.grid.major.x = element_line(color = palette[2], linewidth = 0.2),
+        legend.position = "bottom")
+
+fig3
+```
+
+## Finding 06 - Labour Markets
+
+Unemployment varies dramatically by geography and development model.
+
+```{r}
+#| label: labour-region-table
+#| message: false
+#| warning: false
+#| code-fold: true
+#| code-summary: Show labour table
+w_unemployment %>%
+  group_by(region) %>%
+  summarise(n      = n(),
+            mean   = round(mean(unemployment_rate), 1),
+            median = round(median(unemployment_rate), 1),
+            min    = min(unemployment_rate),
+            max    = max(unemployment_rate),
+            .groups = "drop") %>%
+  arrange(desc(mean)) %>%
+  knitr::kable()
+```
+
+```{r}
+#| label: labour-unemployment-plot
+#| message: false
+#| warning: false
+#| code-fold: true
+#| code-summary: Show unemployment plot
+top10 <- w_unemployment %>% slice_min(unemp_rank, n = 10)
+bot10 <- w_unemployment %>% slice_max(unemp_rank, n = 10)
+
+unemp_plot <- bind_rows(top10 %>% mutate(group = "Highest"),
+                        bot10 %>% mutate(group = "Lowest")) %>%
+  mutate(country = fct_reorder(country, unemployment_rate))
+
+fig4 <- unemp_plot %>%
+  ggplot(aes(x = unemployment_rate, y = country, fill = group)) +
+  geom_col(width = 0.7) +
+  geom_text(aes(label = paste0(unemployment_rate, "%")),
+            hjust = -0.1, size = 3.2, color = palette[1], fontface = "bold") +
+  scale_fill_manual(values = c("Highest" = palette[1], "Lowest" = palette[2])) +
+  scale_x_continuous(labels = function(x) paste0(x, "%")) +
+  expand_limits(x = max(unemp_plot$unemployment_rate) * 1.13) +
+  labs(title = "Figure 8: Countries with Highest & Lowest Unemployment",
+       x = "Unemployment Rate (%)", y = NULL) +
+  theme_kse +
+  theme(panel.grid.major.y = element_blank(),
+        panel.grid.major.x = element_line(color = palette[2], linewidth = 0.25),
+        legend.position = "top")
+
+fig4
+```
+
+```{r}
+#| label: labour-wealthy-high-unemployment
+#| message: false
+#| warning: false
+#| code-fold: true
+#| code-summary: Show unemployment exceptions
+w_unemployment %>%
+  filter(!is.na(gdp_per_capita), gdp_per_capita > 30000, unemployment_rate > 7) %>%
+  arrange(desc(unemployment_rate)) %>%
+  select(country, gdp_per_capita, unemployment_rate) %>%
+  knitr::kable()
+```
+
+## Finding 07 - Purchasing Power
+
+There is not a strong connection between higher/lower prices and higher/lower ability to buy stuff. Also we created a `cartesian coordinate system` which is useful to consider when travelling abroad.
+
+```{r}
+#| label: purchasing-power-summary
+#| message: false
+#| warning: false
+#| code-fold: true
+#| code-summary: Show purchasing power summary
+w_cost %>%
+  summarise(mean_cost   = round(mean(cost_index), 1),
+            median_cost = round(median(cost_index), 1),
+            mean_pp     = round(mean(purchasing_power_index), 1),
+            median_pp   = round(median(purchasing_power_index), 1)) %>%
+  knitr::kable()
+
+w_cost %>%
+  count(col_quadrant) %>%
+  mutate(pct = round(100 * n / sum(n), 0)) %>%
+  knitr::kable()
+```
+
+```{r}
+#| label: purchasing-power-plot
+#| message: false
+#| warning: false
+#| code-fold: true
+#| code-summary: Show purchasing power plot
+label_c5 <- c("Bermuda","Switzerland","Singapore","Qatar","Haiti","New Caledonia",
+              "Norway","United States","Luxembourg","Hong Kong","Iran","China",
+              "Brunei","Saudi Arabia")
+
+fig5 <- w_cost %>%
+  mutate(label = if_else(country %in% label_c5, country, "")) %>%
+  ggplot(aes(x = cost_index, y = purchasing_power_index, color = col_quadrant)) +
+  geom_vline(xintercept = 100, linetype = "dashed", color = palette[9], linewidth = 0.4) +
+  geom_hline(yintercept = 70,  linetype = "dashed", color = palette[9], linewidth = 0.4) +
+  geom_point(size = 2.5, alpha = 0.85) +
+  geom_text_repel(aes(label = label), size = 3, fontface = "plain",
+                  color = palette[1], max.overlaps = 20, seed = 42) +
+  scale_color_manual(values = c(
+    "Expensive & High Power"  = palette[1],
+    "Expensive & Low Power"   = palette[2],
+    "Affordable & High Power" = palette[3],
+    "Affordable & Low Power"  = palette[4]
+  )) +
+  labs(title = "Figure 9: Cost of Living vs Purchasing Power",
+       x = "Cost of Living Index (US = 100)", y = "Purchasing Power Index") +
+  theme_kse +
+  theme(legend.position = "bottom",
+        panel.grid.major.x = element_line(color = palette[2], linewidth = 0.15),
+        panel.grid.major.y = element_line(color = palette[2], linewidth = 0.25))
+
+fig5
+```
+
+## Results and key takeaways
+
+Accross the datasets, countries that are weak in one dimension typically are also weak in others. It has a logical path of: low income goes towards weak institutions, which then result in lower purchasing power and growth rate, which then can end in health problems. Despite the the presence of strong correlation and connection between this factors this is not a destiny - outliers prove it. Estonia is a good example of it, while at the same time resource-rich country countries prove that income does not mean institutional quality for a fact.
+
+```{r}
+#| label: synthesis-summary-table
+#| message: false
+#| warning: false
+#| code-fold: true
+#| code-summary: Show synthesis table
+summary_metrics <- tibble(
+  metric = c(
+    "Income vs. corruption correlation",
+    "Median cost index",
+    "Median purchasing power",
+    "Median unemployment",
+    "Countries in merged cross-section"
+  ),
+  value = c(
+    round(cor(w_corruption$annual_income, w_corruption$corruption_index), 3),
+    round(median(w_cost$cost_index), 1),
+    round(median(w_cost$purchasing_power_index), 1),
+    round(median(w_unemployment$unemployment_rate), 1),
+    nrow(world)
+  )
+)
+
+summary_metrics %>%
+  knitr::kable()
+```
