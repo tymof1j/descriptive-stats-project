@@ -21,7 +21,7 @@ execute:
   message: false
 ---
 
-Our files are available on github: [repo](https://github.com/tymof1j/descriptive-stats-project), as well as the github-pages link to view the rendered html: (link)[]
+Our files are available on github: [repo](https://github.com/tymof1j/descriptive-stats-project), as well as the github-pages link to view the rendered html: [link](https://tymof1j.github.io/descriptive-stats-project/)
 
 ## Our Data
 
@@ -260,7 +260,7 @@ tibble(
 
 The merged cross-sectional dataset contains `r nrow(world)` countries and `r ncol(world)` columns. The World Bank file adds a long-run country-year panel from `r min(bank$Year, na.rm = TRUE)` to `r max(bank$Year, na.rm = TRUE)`.
 
-## Finding 01 - Wealth
+## 1. Wealth
 
 Small, specialized economies dominate GDP per capita rankings.
 
@@ -305,7 +305,7 @@ fig2 <- w_richest %>%
 fig2
 ```
 
-## Finding 02 - Corruption and Income
+## 2. Corruption and Income
 
 The correlation is very strong: as income rises, corruption falls.
 
@@ -389,7 +389,7 @@ bind_rows(
   knitr::kable()
 ```
 
-## Finding 03 - Health and Development
+## 3. Health and Development
 
 This part uses World Bank data, with internet access, GDP per capita, region, and population density as basic development indicators.
 
@@ -476,7 +476,7 @@ bank %>%
   knitr::kable()
 ```
 
-## Finding 04 - Economic Growth
+## 4. Economic Growth
 
 The economic growth file shows the long-run shock-and-rebound pattern which 100% overlaps with the timing of Covid-19.
 
@@ -570,7 +570,7 @@ ec_region %>%
   )
 ```
 
-## Finding 05 - Tourism
+## 5. Tourism
 
 Countries that get the most toursists not necessarily get the most money out of it.
 
@@ -626,7 +626,7 @@ fig3 <- w_tourism %>%
 fig3
 ```
 
-## Finding 06 - Labour Markets
+## 6. Labour Markets
 
 Unemployment varies dramatically by geography and development model.
 
@@ -692,7 +692,7 @@ w_unemployment %>%
   knitr::kable()
 ```
 
-## Finding 07 - Purchasing Power
+## 7. Purchasing Power
 
 There is not a strong connection between higher/lower prices and higher/lower ability to buy stuff. Also we created a `cartesian coordinate system` which is useful to consider when travelling abroad.
 
